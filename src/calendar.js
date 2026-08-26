@@ -13,15 +13,43 @@ const MONTH_NAMES = [
     "December",
 ];
 
+const TRANSACTION_STYLES = {
+    work_shift: "bg-blue-100 text-blue-800",
+    payday: "bg-violet-100 text-violet-800",
+    bill: "bg-amber-100 text-amber-800",
+    income: "bg-emerald-100 text-emerald-800",
+    expense: "bg-red-100 text-red-800",
+};
+
+const VISIBLE_TRANSACTION_LIMIT = 4;
+
+const currencyFormatter = new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+});
+
+const compactCurrencyFormatter = new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+});
+
 // The month currently being displayed.
 let viewDate = new Date();
 
+// // Function used to retrieve the latest transactions.
+// let transactionProvider = () => [];
+
+let viewDataProvider = () => ({
+    transactions: [],
+    dailyBalances: {},
+    summary: null,
+});
+
+let onSummaryChange = () => {};
+
 /**
  * Returns the number of days in a given month.
- *
- * Passing day 0 gives us the final day of the previous month.
- * Example:
- * new Date(2026, 8, 0) -> August 31, 2026
  */
 function getDaysInMonth(year, month) {
     return new Date(year, month + 1, 0).getDate();
@@ -41,8 +69,6 @@ function getFirstDayOfMonth(year, month) {
 
 /**
  * Creates a YYYY-MM-DD date string.
- *
- * We'll use this later when attaching transactions to calendar dates.
  */
 function createDateKey(year, month, day) {
     const paddedMonth = String(month + 1).padStart(2, "0");
@@ -52,7 +78,7 @@ function createDateKey(year, month, day) {
 }
 
 /**
- * Determines whether a calendar date represents today.
+ * Determines whether a calendar date is today.
  */
 function isToday(year, month, day) {
     const today = new Date();
@@ -65,56 +91,219 @@ function isToday(year, month, day) {
 }
 
 /**
- * Builds one active calendar day.
+ * Escapes user-entered text before inserting it into HTML.
  */
-function createDayCell(year, month, day) {
-    const dateKey = createDateKey(year, month, day);
-    const today = isToday(year, month, day);
+function escapeHtml(value) {
+    const characters = {
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#039;",
+    };
 
-    return `
-    <button
-      type="button"
-      data-date="${dateKey}"
-      class="
-        flex min-h-20
-        items-start justify-start
-        bg-white p-2
-        text-left
-        transition
-        hover:bg-slate-50
-        sm:min-h-28
-      "
-    >
-      <span
-        class="
-          flex h-7 w-7
-          items-center justify-center
-          rounded-full
-          text-sm font-medium
-          ${today ? "bg-slate-900 text-white" : "text-slate-700"}
-        "
-      >
-        ${day}
-      </span>
-    </button>
-  `;
+    return String(value).replace(
+        /[&<>"']/g,
+        (character) => characters[character],
+    );
 }
 
 /**
- * Builds an empty cell used before or after the current month.
+ * Formats the useful value shown for a transaction.
+ */
+function formatTransactionValue(transaction) {
+    switch (transaction.type) {
+        case "work_shift":
+            return `${transaction.hours}h`;
+
+        case "income":
+            return `+${currencyFormatter.format(transaction.amount)}`;
+
+        case "bill":
+        case "expense":
+            return `-${currencyFormatter.format(transaction.amount)}`;
+
+        case "payday":
+            return transaction.amount !== null
+                ? `+${currencyFormatter.format(transaction.amount)}`
+                : "Payday";
+
+        default:
+            return "";
+    }
+}
+
+/**
+ * Creates the visual indicator for a single transaction.
+ */
+function createTransactionEntry(transaction) {
+    const style =
+        TRANSACTION_STYLES[transaction.type] ?? "bg-slate-100 text-slate-800";
+
+    const description = escapeHtml(transaction.description);
+    const value = escapeHtml(formatTransactionValue(transaction));
+
+    return `
+        <div
+            class="
+                w-full overflow-hidden rounded
+                px-1.5 py-1
+                text-xs font-medium
+                ${style}
+            "
+        >
+            <div class="flex items-center justify-between gap-1">
+                <span class="hidden min-w-0 truncate sm:block">
+                    ${description}
+                </span>
+
+                <span class="shrink-0">
+                    ${value}
+                </span>
+            </div>
+        </div>
+    `;
+}
+
+/**
+ * Groups transactions by their YYYY-MM-DD date.
+ *
+ * Example:
+ *
+ * {
+ *   "2026-08-25": [transaction, transaction],
+ *   "2026-08-26": [transaction]
+ * }
+ */
+function groupTransactionsByDate(transactions) {
+    return transactions.reduce((grouped, transaction) => {
+        if (!grouped[transaction.date]) {
+            grouped[transaction.date] = [];
+        }
+
+        grouped[transaction.date].push(transaction);
+
+        return grouped;
+    }, {});
+}
+
+/**
+ * Builds one active calendar day.
+ */
+function createDayCell(
+    year,
+    month,
+    day,
+    transactions = [],
+    runningBalance = null,
+) {
+    const dateKey = createDateKey(year, month, day);
+    const today = isToday(year, month, day);
+
+    const visibleTransactions = transactions.slice(
+        0,
+        VISIBLE_TRANSACTION_LIMIT,
+    );
+
+    const remainingCount = transactions.length - visibleTransactions.length;
+
+    const transactionEntries = visibleTransactions
+        .map(createTransactionEntry)
+        .join("");
+
+    const moreIndicator =
+        remainingCount > 0
+            ? `
+                <div
+                    class="
+                        w-full px-1
+                        text-left text-xs
+                        font-medium text-slate-500
+                    "
+                >
+                    +${remainingCount} more
+                </div>
+            `
+            : "";
+
+    return `
+        <button
+            type="button"
+            data-date="${dateKey}"
+            class="
+                flex min-h-20
+                flex-col items-start
+                gap-1
+                overflow-hidden
+                bg-white p-2
+                text-left
+                transition
+                hover:bg-slate-50
+                sm:min-h-28
+            "
+        >
+<div
+    class="
+        flex w-full
+        items-center gap-1.5
+    "
+>
+    <span
+        class="
+            flex h-7 w-7 shrink-0
+            items-center justify-center
+            rounded-full
+            text-sm font-medium
+            ${today ? "bg-slate-900 text-white" : "text-slate-700"}
+        "
+    >
+        ${day}
+    </span>
+
+    <span
+        class="
+            min-w-0 truncate
+            text-[10px]
+            font-medium
+            ${runningBalance < 0 ? "text-red-500" : "text-slate-400"}
+            sm:text-xs
+        "
+        title="${
+            runningBalance !== null
+                ? currencyFormatter.format(runningBalance)
+                : ""
+        }"
+    >
+        ${
+            runningBalance !== null
+                ? compactCurrencyFormatter.format(runningBalance)
+                : ""
+        }
+    </span>
+</div>
+
+            <div class="flex w-full flex-col gap-1">
+                ${transactionEntries}
+                ${moreIndicator}
+            </div>
+        </button>
+    `;
+}
+
+/**
+ * Builds an empty calendar cell.
  */
 function createEmptyCell() {
     return `
-    <div
-      class="
-        min-h-20
-        bg-slate-50
-        p-2
-        sm:min-h-28
-      "
-      aria-hidden="true"
-    ></div>
-  `;
+        <div
+            class="
+                min-h-20
+                bg-slate-50 p-2
+                sm:min-h-28
+            "
+            aria-hidden="true"
+        ></div>
+    `;
 }
 
 /**
@@ -122,8 +311,14 @@ function createEmptyCell() {
  */
 function renderCalendar() {
     const calendarGrid = document.querySelector("#calendar-grid");
+
     const calendarHeading = document.querySelector("#calendar-heading");
+
     const overviewMonth = document.querySelector("#overview-month");
+
+    if (!calendarGrid) {
+        return;
+    }
 
     const year = viewDate.getFullYear();
     const month = viewDate.getMonth();
@@ -136,19 +331,44 @@ function renderCalendar() {
     calendarHeading.textContent = monthLabel;
     overviewMonth.textContent = monthLabel;
 
+    const rangeStart = createDateKey(year, month, 1);
+
+    const rangeEnd = createDateKey(year, month, daysInMonth);
+
+    const { transactions, dailyBalances, summary } = viewDataProvider({
+        startDate: rangeStart,
+        endDate: rangeEnd,
+    });
+
+    onSummaryChange(summary);
+
+    const transactionsByDate = groupTransactionsByDate(transactions);
+
     const cells = [];
 
-    // Add blank cells before day 1.
+    // Empty cells before the first day.
     for (let i = 0; i < firstDay; i += 1) {
         cells.push(createEmptyCell());
     }
 
-    // Add every actual day in the month.
+    // Actual days.
     for (let day = 1; day <= daysInMonth; day += 1) {
-        cells.push(createDayCell(year, month, day));
+        const dateKey = createDateKey(year, month, day);
+
+        const dayTransactions = transactionsByDate[dateKey] ?? [];
+
+        cells.push(
+            createDayCell(
+                year,
+                month,
+                day,
+                dayTransactions,
+                dailyBalances[dateKey] ?? null,
+            ),
+        );
     }
 
-    // Always render six calendar rows: 6 × 7 = 42 cells.
+    // Always display six calendar rows.
     while (cells.length < 42) {
         cells.push(createEmptyCell());
     }
@@ -157,7 +377,7 @@ function renderCalendar() {
 }
 
 /**
- * Moves the calendar backward one month.
+ * Moves backward one month.
  */
 function previousMonth() {
     viewDate = new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1);
@@ -166,7 +386,7 @@ function previousMonth() {
 }
 
 /**
- * Moves the calendar forward one month.
+ * Moves forward one month.
  */
 function nextMonth() {
     viewDate = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1);
@@ -175,14 +395,51 @@ function nextMonth() {
 }
 
 /**
- * Connects the calendar UI to its behavior.
+ * Allows another module to request a calendar rerender.
  */
-export function initializeCalendar() {
+export function refreshCalendar() {
+    renderCalendar();
+}
+
+/**
+ * Connects the calendar UI to application behavior.
+ */
+export function initializeCalendar({
+    onDateSelect,
+    getViewData,
+    onSummaryUpdate,
+}) {
+    const calendarGrid = document.querySelector("#calendar-grid");
+
+    // Save the transaction provider so future renders
+    // always use current application data.
+    // transactionProvider = getTransactions ?? (() => []);
+    viewDataProvider =
+        getViewData ??
+        (() => ({
+            transactions: [],
+            dailyBalances: {},
+            summary: null,
+        }));
+
+    onSummaryChange = onSummaryUpdate ?? (() => {});
+
     document
         .querySelector("#previous-month")
         .addEventListener("click", previousMonth);
 
     document.querySelector("#next-month").addEventListener("click", nextMonth);
+
+    // One listener handles all calendar-day clicks.
+    calendarGrid.addEventListener("click", (event) => {
+        const dayButton = event.target.closest("[data-date]");
+
+        if (!dayButton) {
+            return;
+        }
+
+        onDateSelect(dayButton.dataset.date);
+    });
 
     renderCalendar();
 }
