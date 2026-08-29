@@ -4,9 +4,13 @@ import {
     getTransactions,
     initializeTransactionModal,
     openTransactionModal,
+    openEditTransactionModal,
 } from "./transactions.js";
 import { getEarningsSettings, initializeEarningsSettings } from "./settings.js";
-import { applyCalculatedPaydays } from "./earnings.js";
+import {
+    applyCalculatedPaydays,
+    applyCalculatedShiftEarnings,
+} from "./earnings.js";
 import { expandRecurringTransactions, shiftDateKey } from "./recurrence.js";
 import { calculateViewFinances, getCurrentWeekRange } from "./finance.js";
 import { renderDashboard } from "./dashboard.js";
@@ -376,6 +380,11 @@ document.querySelector("#app").innerHTML = `
                         </div>
 
                         <div class="flex items-center gap-3">
+                            <span class="h-3 w-3 rounded border-2 border-orange-500 bg-blue-300"></span>
+                            Overtime Shift
+                        </div>
+
+                        <div class="flex items-center gap-3">
                             <span class="h-3 w-3 rounded-full bg-emerald-500"></span>
                             Income
                         </div>
@@ -415,15 +424,18 @@ document.querySelector("#app").innerHTML = `
       items-end justify-center
       sm:items-center sm:p-4
     ">
-            <section role="dialog" aria-modal="true" aria-labelledby="transaction-modal-heading" class="
-        relative w-full max-w-lg
-        rounded-t-2xl bg-white
-        shadow-xl
-        sm:rounded-2xl
-      ">
+            <section role="dialog"
+            aria-modal="true" aria-labelledby="transaction-modal-heading"
+            class="
+                relative flex max-h-[100vh] w-full max-w-lg     flex-col overflow-hidden
+                rounded-t-2xl bg-white
+                shadow-xl
+                sm:max-h-[calc(100dvh-2rem)]
+                sm:rounded-2xl
+            ">
                 <!-- Header -->
                 <div class="
-          flex items-center justify-between
+          flex shrink-0 items-center justify-between
           border-b border-slate-200
           px-5 py-4
         ">
@@ -442,7 +454,11 @@ document.querySelector("#app").innerHTML = `
                 </div>
 
                 <!-- Form -->
-                <form id="transaction-form" class="space-y-5 p-5">
+                <form
+                    id="transaction-form"
+                    class="flex min-h-0 flex-1 flex-col">
+
+                    <div class="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain p-5">
 
                     <!-- Date -->
                     <div>
@@ -541,9 +557,22 @@ document.querySelector("#app").innerHTML = `
                         from work shifts and earnings settings.
                     </div>
 
+                    <!-- Recurring edit scope -->
+                    <div id="transaction-edit-scope-group" class="hidden">
+                        <label for="transaction-edit-scope" class="block text-sm font-medium text-slate-700">
+                        Apply Changes To
+                        </label>
+
+                        <select id="transaction-edit-scope" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 outline-none focus:border-slate-500">
+                            <option value="occurrence">This Occurence</option>
+                            
+                            <option value="series">Entire Series</option>
+                        </select>
+                    </div>
+
 
                     <!-- Recurrence -->
-                    <div>
+                    <div id="transaction-recurrence-group">
                         <label for="transaction-recurrence" class="block text-sm font-medium text-slate-700">
                             Recurrence
                         </label>
@@ -577,32 +606,60 @@ document.querySelector("#app").innerHTML = `
                         </select>
                     </div>
 
-
-                    <!-- Actions -->
-                    <div class="
-            flex justify-end gap-3
-            border-t border-slate-200
-            pt-5
-          ">
-                        <button id="cancel-transaction" type="button" class="
-              rounded-lg border border-slate-300
-              px-4 py-2
-              text-sm font-medium
-              hover:bg-slate-50
-            ">
-                            Cancel
-                        </button>
-
-                        <button type="submit" class="
-              rounded-lg
-              bg-slate-900 px-4 py-2
-              text-sm font-medium text-white
-              hover:bg-slate-800
-            ">
-                            Add Transaction
-                        </button>
                     </div>
 
+
+                    <!-- Actions -->
+                    <div
+                        class="
+                            flex shrink-0 items-center justify-between
+                            border-t border-slate-200
+                            bg-white
+                            px-5 py-4
+                        "
+                    >
+                        <button
+                            id="delete-transaction"
+                            type="button"
+                            class="
+                                hidden rounded-lg
+                                border border-red-300
+                                px-4 py-2
+                                text-sm font-medium text-red-700
+                                hover:bg-red-50
+                            "
+                        >
+                            Delete
+                        </button>
+
+                        <div class="ml-auto flex gap-3">
+                            <button
+                                id="cancel-transaction"
+                                type="button"
+                                class="
+                                    rounded-lg border border-slate-300
+                                    px-4 py-2
+                                    text-sm font-medium
+                                    hover:bg-slate-50
+                                "
+                            >
+                                Cancel
+                            </button>
+
+                            <button
+                                id="transaction-submit-button"
+                                type="submit"
+                                class="
+                                    rounded-lg
+                                    bg-slate-900 px-4 py-2
+                                    text-sm font-medium text-white
+                                    hover:bg-slate-800
+                                "
+                            >
+                                Add Transaction
+                            </button>
+                        </div>
+                    </div>
                 </form>
             </section>
         </div>
@@ -666,8 +723,18 @@ function getViewData({ startDate, endDate }) {
         requiredEnd,
     );
 
-    const calculatedTransactions = applyCalculatedPaydays(
+    /*
+     * Calculate each individual shift occurrence after recurrence
+     * expansion so recurring shifts receive the correct weekly
+     * regular/overtime breakdown.
+     */
+    const earningsTransactions = applyCalculatedShiftEarnings(
         expandedTransactions,
+        settings,
+    );
+
+    const calculatedTransactions = applyCalculatedPaydays(
+        earningsTransactions,
         settings,
     );
 
@@ -691,30 +758,11 @@ function getViewData({ startDate, endDate }) {
     };
 }
 
-// /**
-//  * Produces all derived transaction data needed to render the selected calendar month.
-//  */
-// function getDisplayTransactions({ startDate, endDate }) {
-//     const rawTransactions = getTransactions();
-
-//     /**
-//      * Include some history so recurring paydays near the beginning of a month can still see prior shifts/paydays required by the earnings engine.
-//      */
-//     const calculationStart = shiftDateKey(startDate, -EARNINGS_LOOKBACK_DAYS);
-
-//     const expandedTransactions = expandRecurringTransactions(
-//         rawTransactions,
-//         calculationStart,
-//         endDate,
-//     );
-
-//     return applyCalculatedPaydays(expandedTransactions, getEarningsSettings());
-// }
-
 initializeEarningsSettings(refreshCalendar);
 initializeTransactionModal(refreshCalendar);
 initializeCalendar({
     onDateSelect: openTransactionModal,
+    onTransactionSelect: openEditTransactionModal,
     getViewData,
     onSummaryUpdate: renderDashboard,
 });

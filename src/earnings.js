@@ -120,6 +120,46 @@ export function calculateShiftEarnings(transactions, settings) {
 }
 
 /**
+ * Adds derived earnings information to work-shift transactions.
+ *
+ * Stored transaction data is never mutated.
+ * Overtime status is calculated independently for each occurrence.
+ */
+export function applyCalculatedShiftEarnings(transactions, settings) {
+    const shiftEarnings = calculateShiftEarnings(transactions, settings);
+
+    const earningsByTransactionId = new Map(
+        shiftEarnings.map((shift) => [shift.transactionId, shift]),
+    );
+
+    return transactions.map((transaction) => {
+        if (transaction.type !== "work_shift") {
+            return transaction;
+        }
+
+        const earnings = earningsByTransactionId.get(transaction.id);
+
+        if (!earnings) {
+            return transaction;
+        }
+
+        return {
+            ...transaction,
+
+            regularHours: earnings.regularHours,
+            overtimeHours: earnings.overtimeHours,
+
+            regularPay: earnings.regularPay,
+            overtimePay: earnings.overtimePay,
+            grossPay: earnings.grossPay,
+
+            // Display-only derived state.
+            isOvertime: earnings.overtimeHours > 0,
+        };
+    });
+}
+
+/**
  * Creates earnings summaries for each workweek.
  */
 export function calculateWeeklyEarnings(transactions, settings) {

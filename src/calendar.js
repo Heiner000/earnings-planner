@@ -21,6 +21,9 @@ const TRANSACTION_STYLES = {
     expense: "bg-red-100 text-red-800",
 };
 
+const OVERTIME_SHIFT_STYLE =
+    "border-2 border-orange-500 bg-blue-100 text-blue-800";
+
 const VISIBLE_TRANSACTION_LIMIT = 4;
 
 const currencyFormatter = new Intl.NumberFormat("en-US", {
@@ -46,7 +49,11 @@ let viewDataProvider = () => ({
     summary: null,
 });
 
-let onSummaryChange = () => {};
+let onSummaryChange = () => { };
+
+let onTransactionSelect = () => {};
+
+let currentTransactionsById = new Map();
 
 /**
  * Returns the number of days in a given month.
@@ -137,15 +144,32 @@ function formatTransactionValue(transaction) {
  * Creates the visual indicator for a single transaction.
  */
 function createTransactionEntry(transaction) {
-    const style =
-        TRANSACTION_STYLES[transaction.type] ?? "bg-slate-100 text-slate-800";
+    const isOvertimeShift =
+        transaction.type === "work_shift" && transaction.overtimeHours > 0;
 
-    const description = escapeHtml(transaction.description);
+    const style = isOvertimeShift
+        ? OVERTIME_SHIFT_STYLE
+        : (TRANSACTION_STYLES[transaction.type] ??
+          "bg-slate-100 text-slate-800");
+
+    const transactionId = escapeHtml(transaction.id);
+
+    /*
+     * Overtime Shift is display state only.
+     * The underlying transaction remains work_shift.
+     */
+    const displayDescription = isOvertimeShift
+        ? "Overtime Shift"
+        : transaction.description;
+
+    const description = escapeHtml(displayDescription);
     const value = escapeHtml(formatTransactionValue(transaction));
 
     return `
         <div
+            data-transaction-id="${transactionId}"
             class="
+                cursor-pointer
                 w-full overflow-hidden rounded
                 px-1.5 py-1
                 text-xs font-medium
@@ -340,6 +364,10 @@ function renderCalendar() {
         endDate: rangeEnd,
     });
 
+    currentTransactionsById = new Map(
+        transactions.map((transaction) => [transaction.id, transaction]),
+    );
+
     onSummaryChange(summary);
 
     const transactionsByDate = groupTransactionsByDate(transactions);
@@ -406,6 +434,7 @@ export function refreshCalendar() {
  */
 export function initializeCalendar({
     onDateSelect,
+    onTransactionSelect: transactionSelectHandler,
     getViewData,
     onSummaryUpdate,
 }) {
@@ -424,6 +453,8 @@ export function initializeCalendar({
 
     onSummaryChange = onSummaryUpdate ?? (() => {});
 
+    onTransactionSelect = transactionSelectHandler ?? (() => {});
+
     document
         .querySelector("#previous-month")
         .addEventListener("click", previousMonth);
@@ -432,6 +463,24 @@ export function initializeCalendar({
 
     // One listener handles all calendar-day clicks.
     calendarGrid.addEventListener("click", (event) => {
+        /*
+         * Transaction clicks take priority over the
+         * surrounding calendar-day click.
+         */
+        const transactionEntry = event.target.closest("[data-transaction-id]");
+
+        if (transactionEntry) {
+            const transaction = currentTransactionsById.get(
+                transactionEntry.dataset.transactionId,
+            );
+
+            if (transaction) {
+                onTransactionSelect(transaction);
+            }
+
+            return;
+        }
+
         const dayButton = event.target.closest("[data-date]");
 
         if (!dayButton) {

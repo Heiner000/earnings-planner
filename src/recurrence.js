@@ -140,7 +140,10 @@ function generateDayIntervalOccurrences(
     const occurrences = [];
 
     while (occurrenceDate <= rangeEnd) {
-        if (isWithinRange(occurrenceDate, rangeStart, rangeEnd)) {
+        if (
+            isWithinRange(occurrenceDate, rangeStart, rangeEnd) &&
+            !isExcludedOccurrence(transaction, occurrenceDate)
+        ) {
             occurrences.push(createOccurrence(transaction, occurrenceDate));
         }
 
@@ -174,7 +177,9 @@ function generateMonthlyOccurrences(transaction, rangeStart, rangeEnd) {
     const occurrences = [];
 
     while (occurrenceDate <= rangeEnd) {
-        occurrences.push(createOccurrence(transaction, occurrenceDate));
+        if (!isExcludedOccurrence(transaction, occurrenceDate)) {
+            occurrences.push(createOccurrence(transaction, occurrenceDate));
+        }
 
         monthOffset += 1;
 
@@ -238,4 +243,14 @@ export function expandRecurringTransactions(
 
         return (a.createdAt ?? "").localeCompare(b.createdAt ?? "");
     });
+}
+
+/**
+ * Determines whether a specific generated occurrence
+ * has been individually removed from its series.
+ */
+function isExcludedOccurrence(transaction, dateKey) {
+    const excludedDates = transaction.recurrence?.excludedDates ?? [];
+
+    return excludedDates.includes(dateKey);
 }
