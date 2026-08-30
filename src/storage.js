@@ -17,6 +17,10 @@ const DEFAULT_EARNINGS_SETTINGS = {
     hourlyRate: 25,
     regularHours: 40,
     overtimeMultiplier: 1.5,
+
+    payPeriodFrequency: "weekly",
+    paydayDelayDays: 0,
+
     startingBalance: 0,
     balanceStartDate: getTodayDateKey(),
 };

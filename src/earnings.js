@@ -1,5 +1,3 @@
-const DEFAULT_FIRST_PAY_PERIOD_DAYS = 7;
-
 /**
  * Converts YYYY-MM-DD into a local Date object.
  */
@@ -199,23 +197,48 @@ export function calculateWeeklyEarnings(transactions, settings) {
 }
 
 /**
- * Determines the provisional pay-period range for a payday.
+ * Returns the configured pay-period length.
  */
-function getPayPeriodBounds(paydayDate, transactions) {
-    const previousPayday = transactions
-        .filter(
-            (transaction) =>
-                transaction.type === "payday" && transaction.date < paydayDate,
-        )
-        .sort((a, b) => b.date.localeCompare(a.date))[0];
+function getPayPeriodLengthDays(settings) {
+    switch (settings.payPeriodFrequency) {
+        case "biweekly":
+            return 14;
 
-    const startDate = previousPayday
-        ? shiftDate(previousPayday.date, 1)
-        : shiftDate(paydayDate, -(DEFAULT_FIRST_PAY_PERIOD_DAYS - 1));
+        case "weekly":
+        default:
+            return 7;
+    }
+}
+
+/**
+ * Determines which pay period belongs to a payday.
+ *
+ * Example:
+ *
+ * Weekly pay period
+ * Payday Friday
+ * Delay = 5
+ *
+ * Friday - 5 days = previous Sunday
+ *
+ * The resulting pay period is:
+ * Monday → Sunday
+ */
+export function getPayPeriodBounds(paydayDate, settings) {
+    const periodDays = getPayPeriodLengthDays(settings);
+
+    const paydayDelayDays = Math.max(
+        0,
+        Math.floor(Number(settings.paydayDelayDays) || 0),
+    );
+
+    const endDate = shiftDate(paydayDate, -paydayDelayDays);
+
+    const startDate = shiftDate(endDate, -(periodDays - 1));
 
     return {
         startDate,
-        endDate: paydayDate,
+        endDate,
     };
 }
 
@@ -223,7 +246,7 @@ function getPayPeriodBounds(paydayDate, transactions) {
  * Calculates the gross amount represented by one Payday.
  */
 export function calculatePaydayAmount(paydayDate, transactions, settings) {
-    const { startDate, endDate } = getPayPeriodBounds(paydayDate, transactions);
+    const { startDate, endDate } = getPayPeriodBounds(paydayDate, settings);
 
     // Calculate against ALL shifts first so overtime remains accurate even if a pay period crosses workweek boundaries.
     const shiftEarnings = calculateShiftEarnings(transactions, settings);

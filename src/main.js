@@ -45,6 +45,10 @@ document.querySelector("#app").innerHTML = `
             shadow-sm
             transition
             hover:bg-slate-50
+            focus-visible:outline-none
+    focus-visible:ring-2
+    focus-visible:ring-slate-500
+    focus-visible:ring-offset-2
           ">
                 Settings
             </button>
@@ -194,6 +198,10 @@ document.querySelector("#app").innerHTML = `
                 px-3 py-2
                 text-sm font-medium
                 hover:bg-slate-50
+                focus-visible:outline-none
+    focus-visible:ring-2
+    focus-visible:ring-slate-500
+    focus-visible:ring-offset-2
               ">
                         ←
                     </button>
@@ -207,6 +215,10 @@ document.querySelector("#app").innerHTML = `
                 px-3 py-2
                 text-sm font-medium
                 hover:bg-slate-50
+                focus-visible:outline-none
+    focus-visible:ring-2
+    focus-visible:ring-slate-500
+    focus-visible:ring-offset-2
               ">
                         →
                     </button>
@@ -232,12 +244,6 @@ document.querySelector("#app").innerHTML = `
                     <div class="py-3">Sat</div>
                 </div>
 
-
-                <!--
-            JavaScript will eventually generate these cells.
-            For now they are placeholders so we can establish
-            the responsive design.
-          -->
                 <div id="calendar-grid" class="grid grid-cols-7 divide-x divide-y divide-slate-200">
                 </div>
             </section>
@@ -248,7 +254,9 @@ document.querySelector("#app").innerHTML = `
         ===================================== -->
             <aside class="space-y-4">
 
-                <section class="
+                <section
+                    id="earnings-settings"
+                    class="
               rounded-xl border border-slate-200
               bg-white p-5 shadow-sm
             ">
@@ -274,7 +282,7 @@ document.querySelector("#app").innerHTML = `
                                     $
                                 </span>
 
-                                <input id="hourly-rate" type="number" min="0" step="0.01" value="25" class="
+                                <input id="hourly-rate" type="number" min="0" max="1000" step="0.01" value="25" class="
                       w-full rounded-lg
                       border border-slate-300
                       py-2 pl-7 pr-3
@@ -291,7 +299,7 @@ document.querySelector("#app").innerHTML = `
                                 Regular Hours / Week
                             </label>
 
-                            <input id="regular-hours" type="number" min="0" value="40" class="
+                            <input id="regular-hours" type="number" min="1" max="168" step="0.25" value="40" class="
                     mt-1 w-full rounded-lg
                     border border-slate-300
                     px-3 py-2
@@ -307,13 +315,71 @@ document.querySelector("#app").innerHTML = `
                                 Overtime Multiplier
                             </label>
 
-                            <input id="overtime-multiplier" type="number" min="1" step="0.1" value="1.5" class="
-                    mt-1 w-full rounded-lg
-                    border border-slate-300
-                    px-3 py-2
-                    outline-none
-                    focus:border-slate-500
-                  " />
+                            <input id="overtime-multiplier"
+                                type="number"   min="1" max="10" step="0.1" value="1.5" class="mt-1 w-full rounded-lg
+                                border border-slate-300
+                                px-3 py-2 outline-none
+                                focus:border-slate-500
+                            " />
+                        </div>
+
+                        <!-- Pay schedule -->
+                        <div class="border-t border-slate-200 pt-4">
+                            <label
+                                for="pay-period-frequency"
+                                class="block text-sm font-medium text-slate-700"
+                            >
+                                Pay Period
+                            </label>
+
+                            <select
+                                id="pay-period-frequency"
+                                class="
+                                    mt-1 w-full rounded-lg
+                                    border border-slate-300
+                                    bg-white px-3 py-2
+                                    outline-none
+                                    focus:border-slate-500
+                                "
+                            >
+                                <option value="weekly">
+                                    Weekly
+                                </option>
+
+                                <option value="biweekly">
+                                    Biweekly
+                                </option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label
+                                for="payday-delay-days"
+                                class="block text-sm font-medium text-slate-700"
+                            >
+                                Payday Delay
+                            </label>
+
+                            <input
+                                id="payday-delay-days"
+                                type="number"
+                                min="0"
+                                max="21"
+                                step="1"
+                                value="0"
+                                class="
+                                    mt-1 w-full rounded-lg
+                                    border border-slate-300
+                                    px-3 py-2
+                                    outline-none
+                                    focus:border-slate-500
+                                "
+                            />
+
+                            <p class="mt-1 text-xs text-slate-500">
+                                Days between the end of the pay period and payday.
+                                Example: period ends Sunday and payday is Friday = 5.
+                            </p>
                         </div>
 
                         <div class="border-t border-slate-200 pt-4">
@@ -425,9 +491,9 @@ document.querySelector("#app").innerHTML = `
       sm:items-center sm:p-4
     ">
             <section role="dialog"
-            aria-modal="true" aria-labelledby="transaction-modal-heading"
+            aria-modal="true" aria-labelledby="transaction-modal-heading" aria-describedby="transaction-modal-description"
             class="
-                relative flex max-h-[100vh] w-full max-w-lg     flex-col overflow-hidden
+                relative flex max-h-screen w-full max-w-lg     flex-col overflow-hidden
                 rounded-t-2xl bg-white
                 shadow-xl
                 sm:max-h-[calc(100dvh-2rem)]
@@ -442,12 +508,19 @@ document.querySelector("#app").innerHTML = `
                     <h2 id="transaction-modal-heading" class="text-lg font-semibold">
                         Add Transaction
                     </h2>
+                    <p id="transaction-modal-description" class="sr-only">
+                        Add or edit a calendar transaction.
+                    </p>
 
                     <button id="close-transaction-modal" type="button" aria-label="Close" class="
             flex h-9 w-9 items-center justify-center
             rounded-lg
             text-xl text-slate-500
             hover:bg-slate-100
+            focus-visible:outline-none
+    focus-visible:ring-2
+    focus-visible:ring-slate-500
+    focus-visible:ring-offset-2
           ">
                         ×
                     </button>
@@ -536,7 +609,7 @@ document.querySelector("#app").innerHTML = `
                             Hours Worked
                         </label>
 
-                        <input id="transaction-value" name="value" type="number" min="0" step="0.25" required class="
+                        <input id="transaction-value" name="value" type="number" min="0.01" step="0.25" required class="
               mt-1 w-full rounded-lg
               border border-slate-300
               px-3 py-2
@@ -544,6 +617,68 @@ document.querySelector("#app").innerHTML = `
               focus:border-slate-500
             " />
                     </div>
+
+                    <!-- Work shift earnings breakdown -->
+<div
+    id="shift-earnings-breakdown"
+    class="
+        hidden rounded-lg
+        border border-blue-200
+        bg-blue-50
+        p-4
+    "
+>
+    <div class="flex items-center justify-between gap-3">
+        <h3 class="text-sm font-semibold text-slate-900">
+            Shift Earnings
+        </h3>
+
+        <span
+            id="shift-earnings-total"
+            class="text-sm font-bold text-slate-900"
+        >
+            $0.00
+        </span>
+    </div>
+
+    <div class="mt-3 space-y-2 text-sm">
+        <div class="flex items-center justify-between gap-3">
+            <span class="text-slate-600">
+                Regular
+            </span>
+
+            <span
+                id="shift-regular-earnings"
+                class="font-medium text-slate-800"
+            >
+            </span>
+        </div>
+
+        <div
+            id="shift-overtime-row"
+            class="
+                hidden
+                items-center justify-between gap-3
+                border-t border-blue-200
+                pt-2
+            "
+        >
+            <span class="font-medium text-orange-700">
+                Overtime
+            </span>
+
+            <span
+                id="shift-overtime-earnings"
+                class="font-semibold text-orange-700"
+            >
+            </span>
+        </div>
+    </div>
+
+    <p class="mt-3 text-xs text-slate-500">
+        Estimated gross earnings before deductions.
+    </p>
+</div>
 
 
                     <!-- Payday explanation -->
@@ -553,8 +688,7 @@ document.querySelector("#app").innerHTML = `
             bg-violet-50
             p-3 text-sm text-violet-800
           ">
-                        Payday amounts will be calculated automatically
-                        from work shifts and earnings settings.
+                        Payday amounts are calculated automatically from work shifts within the configured pay period.
                     </div>
 
                     <!-- Recurring edit scope -->
@@ -564,7 +698,7 @@ document.querySelector("#app").innerHTML = `
                         </label>
 
                         <select id="transaction-edit-scope" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 outline-none focus:border-slate-500">
-                            <option value="occurrence">This Occurence</option>
+                            <option value="occurrence">This Occurrence</option>
                             
                             <option value="series">Entire Series</option>
                         </select>
@@ -624,9 +758,13 @@ document.querySelector("#app").innerHTML = `
                             class="
                                 hidden rounded-lg
                                 border border-red-300
-                                px-4 py-2
+                                px-4 py-3
                                 text-sm font-medium text-red-700
                                 hover:bg-red-50
+                                focus-visible:outline-none
+    focus-visible:ring-2
+    focus-visible:ring-slate-500
+    focus-visible:ring-offset-2
                             "
                         >
                             Delete
@@ -638,9 +776,13 @@ document.querySelector("#app").innerHTML = `
                                 type="button"
                                 class="
                                     rounded-lg border border-slate-300
-                                    px-4 py-2
+                                    px-4 py-3
                                     text-sm font-medium
                                     hover:bg-slate-50
+                                    focus-visible:outline-none
+    focus-visible:ring-2
+    focus-visible:ring-slate-500
+    focus-visible:ring-offset-2
                                 "
                             >
                                 Cancel
@@ -651,9 +793,13 @@ document.querySelector("#app").innerHTML = `
                                 type="submit"
                                 class="
                                     rounded-lg
-                                    bg-slate-900 px-4 py-2
+                                    bg-slate-900 px-4 py-3
                                     text-sm font-medium text-white
                                     hover:bg-slate-800
+                                    focus-visible:outline-none
+    focus-visible:ring-2
+    focus-visible:ring-slate-500
+    focus-visible:ring-offset-2
                                 "
                             >
                                 Add Transaction
@@ -667,7 +813,13 @@ document.querySelector("#app").innerHTML = `
 </div>
 `;
 
-// const EARNINGS_LOOKBACK_DAYS = 45;
+document.querySelector("#settings-button").addEventListener("click", () => {
+    document.querySelector("#earnings-settings").scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+    });
+});
+
 const PAYDAY_LOOKBACK_DAYS = 45;
 
 /**

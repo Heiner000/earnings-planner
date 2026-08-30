@@ -1,4 +1,5 @@
 import { loadTransactions, saveTransactions } from "./storage.js";
+import { getEarningsSettings } from "./settings.js";
 
 const transactions = loadTransactions();
 
@@ -25,6 +26,8 @@ let valueLabel;
 let valueInput;
 let paydayMessage;
 
+let previouslyFocusedElement = null;
+
 let recurrenceGroup;
 let recurrenceInput;
 
@@ -33,6 +36,14 @@ let editScopeInput;
 
 let submitButton;
 let deleteButton;
+
+let shiftEarningsBreakdown;
+let shiftEarningsTotal;
+
+let shiftRegularEarnings;
+
+let shiftOvertimeRow;
+let shiftOvertimeEarnings;
 
 /*
  * null = adding a new transaction.
@@ -71,18 +82,37 @@ function updateValueField() {
 
     valueInput.required = !isPayday;
 
+    /*
+     * Clear any previous type-specific validation error.
+     */
+    valueInput.setCustomValidity("");
+
     if (isWorkShift) {
         valueLabel.textContent = "Hours Worked";
+
+        valueInput.min = "0.25";
+        valueInput.max = "24";
         valueInput.step = "0.25";
         valueInput.placeholder = "8";
     } else {
         valueLabel.textContent = "Amount";
+
+        valueInput.min = "0.01";
+        valueInput.removeAttribute("max");
         valueInput.step = "0.01";
         valueInput.placeholder = "0.00";
     }
 
-    if (isPayday) {
-        valueInput.value = "";
+    /*
+     * Earnings breakdown is only relevant when editing
+     * an already-calculated work shift.
+     */
+    if (editingContext) {
+        if (isWorkShift) {
+            renderShiftEarningsBreakdown(editingContext.displayedTransaction);
+        } else {
+            shiftEarningsBreakdown.classList.add("hidden");
+        }
     }
 }
 
@@ -222,6 +252,8 @@ function excludeRecurringOccurrence(sourceTransactionId, occurrenceDate) {
  * Opens the visible modal.
  */
 function showModal() {
+    previouslyFocusedElement = document.activeElement;
+
     modal.classList.remove("hidden");
     modal.setAttribute("aria-hidden", "false");
 
@@ -410,17 +442,62 @@ function deleteEditedTransaction() {
     closeTransactionModal();
 }
 
+function trapModalFocus(event) {
+    if (event.key !== "Tab" || modal.classList.contains("hidden")) {
+        return;
+    }
+
+    const focusableElements = [
+        ...modal.querySelectorAll(
+            `
+                button:not([disabled]):not(.hidden),
+                input:not([disabled]):not(.hidden),
+                select:not([disabled]):not(.hidden),
+                textarea:not([disabled]):not(.hidden),
+                [tabindex]:not([tabindex="-1"])
+            `,
+        ),
+    ].filter((element) => element.offsetParent !== null);
+
+    if (focusableElements.length === 0) {
+        return;
+    }
+
+    const firstElement = focusableElements[0];
+    const lastElement = focusableElements[focusableElements.length - 1];
+
+    if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+
+        return;
+    }
+
+    if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+    }
+}
+
 /**
  * Closes the transaction modal.
  */
 export function closeTransactionModal() {
     modal.classList.add("hidden");
-
     modal.setAttribute("aria-hidden", "true");
 
     document.body.classList.remove("overflow-hidden");
 
     editingContext = null;
+
+    if (
+        previouslyFocusedElement &&
+        typeof previouslyFocusedElement.focus === "function"
+    ) {
+        previouslyFocusedElement.focus();
+    }
+
+    previouslyFocusedElement = null;
 }
 
 /**
@@ -430,6 +507,8 @@ export function openTransactionModal(dateKey) {
     form.reset();
 
     configureAddMode();
+
+    shiftEarningsBreakdown.classList.add("hidden");
 
     dateInput.value = dateKey;
 
@@ -468,6 +547,8 @@ export function openEditTransactionModal(transaction) {
      * the user clicked.
      */
     populateForm(transaction);
+
+    renderShiftEarningsBreakdown(transaction);
 
     showModal();
 }
@@ -517,11 +598,31 @@ export function initializeTransactionModal(onChange) {
 
     deleteButton = document.querySelector("#delete-transaction");
 
+    shiftEarningsBreakdown = document.querySelector(
+        "#shift-earnings-breakdown",
+    );
+
+    shiftEarningsTotal = document.querySelector("#shift-earnings-total");
+
+    shiftRegularEarnings = document.querySelector("#shift-regular-earnings");
+
+    shiftOvertimeRow = document.querySelector("#shift-overtime-row");
+
+    shiftOvertimeEarnings = document.querySelector("#shift-overtime-earnings");
+
     const closeButton = document.querySelector("#close-transaction-modal");
 
     const cancelButton = document.querySelector("#cancel-transaction");
 
     const backdrop = document.querySelector("#transaction-backdrop");
+
+    dateInput.addEventListener("input", () => {
+        dateInput.setCustomValidity("");
+    });
+
+    valueInput.addEventListener("input", () => {
+        valueInput.setCustomValidity("");
+    });
 
     typeInput.addEventListener("change", updateValueField);
 
@@ -554,13 +655,25 @@ export function initializeTransactionModal(onChange) {
     deleteButton.addEventListener("click", deleteEditedTransaction);
 
     document.addEventListener("keydown", (event) => {
-        if (event.key === "Escape" && !modal.classList.contains("hidden")) {
-            closeTransactionModal();
+        if (modal.classList.contains("hidden")) {
+            return;
         }
+
+        if (event.key === "Escape") {
+            closeTransactionModal();
+
+            return;
+        }
+
+        trapModalFocus(event);
     });
 
     form.addEventListener("submit", (event) => {
         event.preventDefault();
+
+        if (!validateTransactionForm()) {
+            return;
+        }
 
         const formData = new FormData(form);
 
@@ -586,4 +699,156 @@ export function initializeTransactionModal(onChange) {
 
         closeTransactionModal();
     });
+}
+
+/**
+ * Performs application-level validation before a
+ * transaction is created or updated.
+ */
+function validateTransactionForm() {
+    const type = typeInput.value;
+
+    /*
+     * Date must be a valid YYYY-MM-DD value.
+     */
+    if (!dateInput.value || !dateInput.checkValidity()) {
+        dateInput.setCustomValidity("Please select a valid date.");
+
+        dateInput.reportValidity();
+
+        return false;
+    }
+
+    dateInput.setCustomValidity("");
+
+    /*
+     * Paydays have no manually entered numeric value.
+     */
+    if (type === "payday") {
+        return true;
+    }
+
+    const value = Number(valueInput.value);
+
+    if (!Number.isFinite(value)) {
+        valueInput.setCustomValidity("Please enter a valid number.");
+
+        valueInput.reportValidity();
+
+        return false;
+    }
+
+    if (type === "work_shift") {
+        if (value <= 0) {
+            valueInput.setCustomValidity(
+                "Work shifts must contain more than 0 hours.",
+            );
+
+            valueInput.reportValidity();
+
+            return false;
+        }
+
+        if (value > 24) {
+            valueInput.setCustomValidity(
+                "A single work shift cannot exceed 24 hours.",
+            );
+
+            valueInput.reportValidity();
+
+            return false;
+        }
+
+        /*
+         * Hours must match our quarter-hour increments.
+         */
+        if (!Number.isInteger(value * 4)) {
+            valueInput.setCustomValidity(
+                "Hours must use 0.25-hour increments.",
+            );
+
+            valueInput.reportValidity();
+
+            return false;
+        }
+    } else if (value <= 0) {
+        valueInput.setCustomValidity("Amount must be greater than $0.");
+
+        valueInput.reportValidity();
+
+        return false;
+    }
+
+    valueInput.setCustomValidity("");
+
+    return true;
+}
+
+const currencyFormatter = new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+});
+
+/**
+ * Displays the calculated earnings belonging to a
+ * rendered work-shift occurrence.
+ *
+ * This does not calculate overtime. It only displays
+ * values already produced by the earnings engine.
+ */
+function renderShiftEarningsBreakdown(transaction) {
+    const isWorkShift = transaction?.type === "work_shift";
+
+    const hasCalculatedEarnings = Number.isFinite(
+        Number(transaction?.grossPay),
+    );
+
+    if (!isWorkShift || !hasCalculatedEarnings) {
+        shiftEarningsBreakdown.classList.add("hidden");
+
+        return;
+    }
+
+    const settings = getEarningsSettings();
+
+    const hourlyRate = Number(settings.hourlyRate) || 0;
+
+    const overtimeRate =
+        hourlyRate * (Number(settings.overtimeMultiplier) || 1);
+
+    const regularHours = Number(transaction.regularHours) || 0;
+
+    const overtimeHours = Number(transaction.overtimeHours) || 0;
+
+    const regularPay = Number(transaction.regularPay) || 0;
+
+    const overtimePay = Number(transaction.overtimePay) || 0;
+
+    const grossPay = Number(transaction.grossPay) || 0;
+
+    shiftRegularEarnings.textContent =
+        `${regularHours}h × ` +
+        `${currencyFormatter.format(hourlyRate)} = ` +
+        `${currencyFormatter.format(regularPay)}`;
+
+    shiftEarningsTotal.textContent = currencyFormatter.format(grossPay);
+
+    /*
+     * Only show a separate overtime row when this
+     * particular shift contains overtime hours.
+     */
+    if (overtimeHours > 0) {
+        shiftOvertimeEarnings.textContent =
+            `${overtimeHours}h × ` +
+            `${currencyFormatter.format(overtimeRate)} = ` +
+            `${currencyFormatter.format(overtimePay)}`;
+
+        shiftOvertimeRow.classList.remove("hidden");
+        shiftOvertimeRow.classList.add("flex");
+    } else {
+        shiftOvertimeRow.classList.add("hidden");
+        shiftOvertimeRow.classList.remove("flex");
+    }
+
+    shiftEarningsBreakdown.classList.remove("hidden");
 }

@@ -40,16 +40,13 @@ const compactCurrencyFormatter = new Intl.NumberFormat("en-US", {
 // The month currently being displayed.
 let viewDate = new Date();
 
-// // Function used to retrieve the latest transactions.
-// let transactionProvider = () => [];
-
 let viewDataProvider = () => ({
     transactions: [],
     dailyBalances: {},
     summary: null,
 });
 
-let onSummaryChange = () => { };
+let onSummaryChange = () => {};
 
 let onTransactionSelect = () => {};
 
@@ -166,15 +163,21 @@ function createTransactionEntry(transaction) {
     const value = escapeHtml(formatTransactionValue(transaction));
 
     return `
-        <div
-            data-transaction-id="${transactionId}"
+        <button
+    type="button"
+    data-transaction-id="${transactionId}"
+    aria-label="${description}, ${value}"
             class="
-                cursor-pointer
-                w-full overflow-hidden rounded
-                px-1.5 py-1
-                text-xs font-medium
-                ${style}
-            "
+    min-h-8
+    w-full overflow-hidden rounded
+    px-1.5 py-1
+    text-left text-xs font-medium
+    outline-none
+    focus-visible:ring-2
+    focus-visible:ring-slate-500
+    focus-visible:ring-offset-1
+    ${style}
+"
         >
             <div class="flex items-center justify-between gap-1">
                 <span class="hidden min-w-0 truncate sm:block">
@@ -185,7 +188,7 @@ function createTransactionEntry(transaction) {
                     ${value}
                 </span>
             </div>
-        </div>
+        </button>
     `;
 }
 
@@ -251,10 +254,7 @@ function createDayCell(
             : "";
 
     return `
-        <button
-            type="button"
-            data-date="${dateKey}"
-            class="
+        <div data-date="${dateKey}" class="
                 flex min-h-20
                 flex-col items-start
                 gap-1
@@ -264,53 +264,45 @@ function createDayCell(
                 transition
                 hover:bg-slate-50
                 sm:min-h-28
-            "
-        >
-<div
-    class="
+            ">
+    <div class="
         flex w-full
         items-center gap-1.5
-    "
->
-    <span
-        class="
-            flex h-7 w-7 shrink-0
-            items-center justify-center
-            rounded-full
-            text-sm font-medium
-            ${today ? "bg-slate-900 text-white" : "text-slate-700"}
-        "
-    >
-        ${day}
-    </span>
-
-    <span
-        class="
-            min-w-0 truncate
-            text-[10px]
-            font-medium
-            ${runningBalance < 0 ? "text-red-500" : "text-slate-400"}
-            sm:text-xs
-        "
-        title="${
-            runningBalance !== null
-                ? currencyFormatter.format(runningBalance)
-                : ""
-        }"
-    >
-        ${
-            runningBalance !== null
-                ? compactCurrencyFormatter.format(runningBalance)
-                : ""
-        }
-    </span>
-</div>
-
-            <div class="flex w-full flex-col gap-1">
-                ${transactionEntries}
-                ${moreIndicator}
-            </div>
+    ">
+        <button type="button"
+            data-add-date="${dateKey}"
+            aria-label="Add transaction on ${dateKey}"
+            class="
+                flex h-8 w-8 shrink-0
+                items-center justify-center
+                rounded-full
+                text-sm font-medium
+                outline-none
+                focus-visible:ring-2
+                focus-visible:ring-slate-500
+                focus-visible:ring-offset-2
+                ${today ? " bg-slate-900 text-white" : "text-slate-700"} "
+        >
+            ${day}
         </button>
+
+    <span
+        class=" min-w-0 truncate text-[10px] font-medium ${runningBalance < 0 ? "text-red-500" : "text-slate-400"}
+            sm:text-xs "
+        title=" ${runningBalance !== null ? currencyFormatter.format(runningBalance) : ""}">
+            ${
+                runningBalance !== null
+                    ? compactCurrencyFormatter.format(runningBalance)
+                    : ""
+            }
+        </span>
+    </div>
+
+    <div class="flex w-full flex-col gap-1">
+        ${transactionEntries}
+        ${moreIndicator}
+    </div>
+</div>
     `;
 }
 
@@ -440,9 +432,6 @@ export function initializeCalendar({
 }) {
     const calendarGrid = document.querySelector("#calendar-grid");
 
-    // Save the transaction provider so future renders
-    // always use current application data.
-    // transactionProvider = getTransactions ?? (() => []);
     viewDataProvider =
         getViewData ??
         (() => ({
@@ -481,13 +470,21 @@ export function initializeCalendar({
             return;
         }
 
-        const dayButton = event.target.closest("[data-date]");
+        const addButton = event.target.closest("[data-add-date]");
 
-        if (!dayButton) {
+        if (addButton) {
+            onDateSelect(addButton.dataset.addDate);
             return;
         }
 
-        onDateSelect(dayButton.dataset.date);
+        /*
+         * Clicking empty space inside a calendar day should also open Add Transaction.
+         */
+        const dayCell = event.target.closest("[data-date]");
+
+        if (dayCell) {
+            onDateSelect(dayCell.dataset.date);
+        }
     });
 
     renderCalendar();

@@ -116,44 +116,31 @@ function calculateTotals(transactions, startDate, endDate) {
 /**
  * Calculates the projected end-of-day balance.
  *
- * startingBalance represents the opening balance at the beginning of balanceStartDate.
+ * balanceStartDate is the beginning of the projection.
+ * Dates before that point have no projected balance.
  */
 export function calculateBalanceAtEndOfDay(transactions, settings, dateKey) {
     const startingBalance = Number(settings.startingBalance) || 0;
 
     const anchorDate = settings.balanceStartDate;
 
-    /**
-     * Moving forward from the anchor:
-     *
-     * starting balance + all financial activity through dateKey
+    /*
+     * We intentionally do not reconstruct historical
+     * balances before the projection start date.
      */
-    if (dateKey >= anchorDate) {
-        const netChange = transactions.reduce((total, transaction) => {
-            if (transaction.date < anchorDate || transaction.date > dateKey) {
-                return total;
-            }
-
-            return total + getTransactionImpact(transaction);
-        }, 0);
-
-        return roundMoney(startingBalance + netChange);
+    if (dateKey < anchorDate) {
+        return null;
     }
 
-    /*
-     * Moving backward from the anchor.
-     *
-     * This lets previous calendar months still display mathematically consistent balances.
-     */
-    const laterActivity = transactions.reduce((total, transaction) => {
-        if (transaction.date <= dateKey || transaction.date >= anchorDate) {
+    const netChange = transactions.reduce((total, transaction) => {
+        if (transaction.date < anchorDate || transaction.date > dateKey) {
             return total;
         }
 
         return total + getTransactionImpact(transaction);
     }, 0);
 
-    return roundMoney(startingBalance - laterActivity);
+    return roundMoney(startingBalance + netChange);
 }
 
 /**
@@ -215,7 +202,8 @@ export function calculateViewFinances(
 
             monthlyExpenses: roundMoney(monthly.expenses),
 
-            projectedBalance: dailyBalances[viewEnd] ?? 0,
+            projectedBalance:
+                dailyBalances[viewEnd] ?? Number(settings.startingBalance) ?? 0,
         },
     };
 }

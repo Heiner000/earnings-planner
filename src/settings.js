@@ -27,6 +27,12 @@ export function initializeEarningsSettings(onChange) {
 
     const balanceStartDateInput = document.querySelector("#balance-start-date");
 
+    const payPeriodFrequencyInput = document.querySelector(
+        "#pay-period-frequency",
+    );
+
+    const paydayDelayDaysInput = document.querySelector("#payday-delay-days");
+
     // Populate the controls from saved settings.
     hourlyRateInput.value = earningsSettings.hourlyRate;
 
@@ -38,6 +44,10 @@ export function initializeEarningsSettings(onChange) {
 
     balanceStartDateInput.value = earningsSettings.balanceStartDate;
 
+    payPeriodFrequencyInput.value = earningsSettings.payPeriodFrequency;
+
+    paydayDelayDaysInput.value = earningsSettings.paydayDelayDays;
+
     /**
      * Reads valid values from the UI and persists them.
      */
@@ -46,16 +56,44 @@ export function initializeEarningsSettings(onChange) {
             hourlyRateInput,
             regularHoursInput,
             overtimeMultiplierInput,
+            payPeriodFrequencyInput,
+            paydayDelayDaysInput,
             startingBalanceInput,
             balanceStartDateInput,
         ];
 
-        // Don't save while one of the number fields contains an incomplete or invalid value.
+        /*
+         * Let the HTML constraints reject:
+         * - blank required fields
+         * - values outside min/max
+         * - invalid step values
+         */
         const hasInvalidInput = inputs.some(
             (input) => input.value === "" || !input.checkValidity(),
         );
 
         if (hasInvalidInput) {
+            return;
+        }
+
+        /*
+         * Only known pay-period values may be persisted.
+         * This protects against malformed DOM/local input.
+         */
+        const validPayPeriodFrequencies = ["weekly", "biweekly"];
+
+        if (
+            !validPayPeriodFrequencies.includes(payPeriodFrequencyInput.value)
+        ) {
+            return;
+        }
+
+        /*
+         * Payday delay represents whole calendar days.
+         */
+        const paydayDelayDays = Number(paydayDelayDaysInput.value);
+
+        if (!Number.isInteger(paydayDelayDays)) {
             return;
         }
 
@@ -66,13 +104,18 @@ export function initializeEarningsSettings(onChange) {
 
             overtimeMultiplier: Number(overtimeMultiplierInput.value),
 
+            payPeriodFrequency: payPeriodFrequencyInput.value,
+
+            paydayDelayDays,
+
             startingBalance: Number(startingBalanceInput.value),
 
             balanceStartDate: balanceStartDateInput.value,
         };
 
         saveEarningsSettings(earningsSettings);
-        // Recalculates anythign that depends on earnings settings.
+
+        // Recalculate anything dependent on earnings settings.
         onSettingsChange();
     }
 
@@ -85,4 +128,8 @@ export function initializeEarningsSettings(onChange) {
     startingBalanceInput.addEventListener("input", updateSettings);
 
     balanceStartDateInput.addEventListener("input", updateSettings);
+
+    payPeriodFrequencyInput.addEventListener("change", updateSettings);
+
+    paydayDelayDaysInput.addEventListener("input", updateSettings);
 }
